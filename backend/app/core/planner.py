@@ -7,10 +7,21 @@ from app.core.bob_client import get_bob_client
 
 
 class MigrationPlanner:
-    """Generate migration plans"""
+    """Generate migration plans - Django to FastAPI only"""
+    
+    # Supported migration path
+    SUPPORTED_MIGRATIONS = {
+        "django": ["fastapi"]
+    }
     
     def __init__(self):
         self.bob_client = get_bob_client()
+    
+    def validate_migration_path(self, source: str, target: str) -> bool:
+        """Validate if migration path is supported"""
+        source = source.lower()
+        target = target.lower()
+        return source in self.SUPPORTED_MIGRATIONS and target in self.SUPPORTED_MIGRATIONS[source]
     
     async def generate_plan(
         self,
@@ -73,10 +84,7 @@ File Categories:
         Validate if migration path is supported
         """
         supported_migrations = {
-            "django": ["fastapi", "express"],
-            "spring": ["springboot", "fastapi"],
-            "flask": ["fastapi"],
-            "express": ["fastapi"]
+            "django": ["fastapi"]
         }
         
         source = source_framework.lower()

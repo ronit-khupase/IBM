@@ -32,17 +32,17 @@ async def generate_migration_plan(
         scan_results = await scanner.scan()
         
         source_framework = scan_results["framework"]
-        target_framework = request.target_framework or "fastapi"
+        target_framework = "fastapi"  # Fixed to FastAPI only
         
-        # Validate migration path
-        planner = MigrationPlanner()
-        if not planner.validate_migration_path(source_framework, target_framework):
+        # Validate source is Django
+        if source_framework.lower() != "django":
             raise HTTPException(
                 status_code=400,
-                detail=f"Migration from {source_framework} to {target_framework} is not supported"
+                detail=f"Only Django to FastAPI migration is supported. Detected: {source_framework}"
             )
         
         # Generate plan
+        planner = MigrationPlanner()
         plan = await planner.generate_plan(
             source_framework=source_framework,
             target_framework=target_framework,

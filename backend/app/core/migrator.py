@@ -5,7 +5,6 @@ Converts legacy code to modern frameworks using IBM Bob AI
 from pathlib import Path
 from typing import Dict, Any, List
 from app.core.bob_client import get_bob_client
-from app.core.snapshot import SnapshotManager
 from app.utils.file_utils import (
     get_project_path,
     scan_directory,
@@ -21,7 +20,6 @@ class CodeMigrator:
     def __init__(self, project_id: str):
         self.project_id = project_id
         self.bob_client = get_bob_client()
-        self.snapshot_manager = SnapshotManager(project_id)
     
     async def migrate(
         self,
@@ -40,11 +38,6 @@ class CodeMigrator:
         print(f"Target Framework: {target_framework}")
         print(f"Source Path: {source_path}")
         print(f"{'='*80}\n")
-        
-        # Create snapshot before migration
-        print("📸 Creating snapshot...")
-        await self.snapshot_manager.create_snapshot(source_path)
-        print("✅ Snapshot created\n")
         
         # Get files to migrate
         print("🔍 Finding files to migrate...")
@@ -179,15 +172,15 @@ class CodeMigrator:
         # Read source code
         source_code = read_file_content(file_path)
         
-        # Determine file type
-        file_type = self._determine_file_type(file_path, source_code)
+        # Determine file type with enhanced metadata
+        file_info = self._determine_file_type(file_path, source_code)
         
-        # Convert using Bob AI
+        # Convert using Bob AI with file info
         converted_code = await self.bob_client.migrate_code(
             source_code=source_code,
             source_framework=source_framework,
             target_framework=target_framework,
-            file_type=file_type
+            file_info=file_info
         )
         
         # Determine output path
@@ -204,25 +197,81 @@ class CodeMigrator:
         return {
             "source": relative_path,
             "target": str(output_file.relative_to(output_path)),
-            "type": file_type
+            "type": file_info.get("category", "general")
         }
     
-    def _determine_file_type(self, file_path: Path, content: str) -> str:
+    def _determine_file_type(self, file_path: Path, content: str) -> Dict[str, Any]:
         """
-        Determine file type for migration
+        Determine file type with enhanced metadata for accurate conversion
+        Returns structured information about the file
         """
         filename = file_path.name.lower()
         
-        if 'model' in filename:
+        # Detect Django-specific patterns
+        is_django_view = any(pattern in content for pattern in [
+            'APIView', 'viewsets.', 'from rest_framework.views',
+            '@login_required', 'render(request'
+        ])
+        
+        is_django_model = any(pattern in content for pattern in [
+            'models.Model', 'from django.db import models',
+            'models.CharField', 'models.ForeignKey'
+        ])
+        
+        is_django_serializer = any(pattern in content for pattern in [
+            'serializers.', 'from rest_framework import serializers',
+            'ModelSerializer'
+        ])
+        
+        is_django_urls = any(pattern in content for pattern in [
+            'urlpatterns', 'path(', 'url(', 'from django.urls'
+        ])
+        
+        # Determine category based on filename and content
+        category = self._get_category(filename, content, is_django_view, is_django_model,
+                                      is_django_serializer, is_django_urls)
+        
+        return {
+            "filename": file_path.name,
+            "path": str(file_path),
+            "category": category,
+            "has_classes": "class " in content,
+            "has_functions": "def " in content,
+            "is_django_view": is_django_view,
+            "is_django_model": is_django_model,
+            "is_django_serializer": is_django_serializer,
+            "is_django_urls": is_django_urls,
+            "line_count": len(content.split('\n'))
+        }
+    
+    def _get_category(self, filename: str, content: str, is_view: bool,
+                     is_model: bool, is_serializer: bool, is_urls: bool) -> str:
+        """
+        Determine file category based on filename and content analysis
+        """
+        # Check filename patterns first
+        if 'model' in filename and not 'test' in filename:
             return "model"
-        elif 'view' in filename or 'controller' in filename:
-            return "controller"
+        elif 'view' in filename:
+            return "view"
         elif 'url' in filename or 'route' in filename:
-            return "routes"
+            return "urls"
         elif 'serializer' in filename:
             return "serializer"
         elif 'service' in filename:
             return "service"
+        elif 'form' in filename:
+            return "form"
+        
+        # Fall back to content analysis
+        if is_model:
+            return "model"
+        elif is_view:
+            return "view"
+        elif is_urls:
+            return "urls"
+        elif is_serializer:
+            return "serializer"
         else:
             return "general"
     

@@ -4,6 +4,7 @@ Handles all interactions with IBM Bob AI for code analysis and migration
 """
 import os
 import json
+import re
 import httpx
 from typing import Dict, Any, Optional, List
 from pathlib import Path
@@ -237,52 +238,176 @@ Format as JSON with keys: architecture, legacy_patterns, issues, opportunities
         repository_summary: str
     ) -> Dict[str, Any]:
         """
-        Generate detailed migration plan
+        Generate detailed migration plan using Bob AI
         """
         prompt = f"""
-Create a migration plan to convert a {source_framework} application to {target_framework}.
+You are an expert software architect specializing in framework migrations.
 
-Repository summary:
+Analyze this {source_framework} application and create a detailed migration plan to {target_framework}.
+
+Repository Analysis:
 {repository_summary}
 
-Provide:
-1. Step-by-step migration steps (list)
-2. Potential bugs/issues to watch for (list)
-3. Modernization suggestions (list)
-4. Estimated complexity (Low/Medium/High)
+Generate a comprehensive migration plan with:
 
-Format as JSON with keys: steps, bugs, suggestions, complexity
+1. MIGRATION STEPS: Provide 8-12 specific, actionable steps for migrating this exact codebase from {source_framework} to {target_framework}. Be specific to the files and patterns detected in the repository summary.
+
+2. POTENTIAL ISSUES: List 4-6 specific bugs, compatibility issues, or challenges that may arise during this migration based on the detected patterns and file structure.
+
+3. MODERNIZATION SUGGESTIONS: Provide 4-6 concrete suggestions for improving the code during migration (async patterns, better architecture, modern libraries, etc.).
+
+4. COMPLEXITY ASSESSMENT: Rate the migration complexity as "Low", "Medium", or "High" based on the repository size, patterns detected, and migration scope.
+
+IMPORTANT: Base your response on the actual repository summary provided. Make it specific to this codebase, not generic.
+
+Return your response in this exact JSON format:
+{{
+  "steps": ["step 1", "step 2", ...],
+  "bugs": ["issue 1", "issue 2", ...],
+  "suggestions": ["suggestion 1", "suggestion 2", ...],
+  "complexity": "Low|Medium|High"
+}}
+
+Return ONLY valid JSON, no additional text.
 """
         
         response = await self._make_request(prompt)
         
-        # Simplified response for MVP
+        # Try to parse JSON response from Bob AI
+        try:
+            # Clean up response - remove markdown code blocks if present
+            cleaned_response = response.strip()
+            if "```json" in cleaned_response:
+                # Extract JSON from markdown code block
+                json_match = re.search(r'```json\s*(\{.*?\})\s*```', cleaned_response, re.DOTALL)
+                if json_match:
+                    cleaned_response = json_match.group(1)
+            elif "```" in cleaned_response:
+                # Extract from generic code block
+                json_match = re.search(r'```\s*(\{.*?\})\s*```', cleaned_response, re.DOTALL)
+                if json_match:
+                    cleaned_response = json_match.group(1)
+            
+            # Try to find JSON object in response
+            json_match = re.search(r'\{.*\}', cleaned_response, re.DOTALL)
+            if json_match:
+                cleaned_response = json_match.group(0)
+            
+            # Parse JSON
+            plan_data = json.loads(cleaned_response)
+            
+            # Validate required keys
+            if all(key in plan_data for key in ["steps", "bugs", "suggestions", "complexity"]):
+                print(f"✅ Successfully parsed Bob AI migration plan")
+                print(f"   Steps: {len(plan_data['steps'])}")
+                print(f"   Issues: {len(plan_data['bugs'])}")
+                print(f"   Suggestions: {len(plan_data['suggestions'])}")
+                print(f"   Complexity: {plan_data['complexity']}")
+                return plan_data
+            else:
+                print(f"⚠️  Bob AI response missing required keys")
+                raise ValueError("Missing required keys in response")
+                
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"⚠️  Failed to parse Bob AI response as JSON: {str(e)}")
+            print(f"   Response preview: {response[:200]}")
+            print(f"   Falling back to intelligent parsing...")
+            
+            # Fallback: Try to extract information from text response
+            return self._parse_text_migration_plan(response, source_framework, target_framework)
+    
+    def _parse_text_migration_plan(
+        self,
+        response: str,
+        source_framework: str,
+        target_framework: str
+    ) -> Dict[str, Any]:
+        """
+        Parse migration plan from text response when JSON parsing fails
+        """
+        import re
+        
+        # Try to extract sections from text
+        steps = []
+        bugs = []
+        suggestions = []
+        complexity = "Medium"
+        
+        # Extract steps (look for numbered lists)
+        step_pattern = r'(?:^|\n)\s*\d+[\.\)]\s*(.+?)(?=\n\s*\d+[\.\)]|\n\n|$)'
+        step_matches = re.findall(step_pattern, response, re.MULTILINE)
+        if step_matches:
+            steps = [step.strip() for step in step_matches[:12]]
+        
+        # Extract issues/bugs (look for keywords)
+        if "issue" in response.lower() or "bug" in response.lower() or "problem" in response.lower():
+            issue_section = re.search(r'(?:issues?|bugs?|problems?)[\s:]+(.+?)(?=\n\n|\n[A-Z]|$)', response, re.IGNORECASE | re.DOTALL)
+            if issue_section:
+                issue_text = issue_section.group(1)
+                bug_matches = re.findall(r'[-•*]\s*(.+?)(?=\n[-•*]|\n\n|$)', issue_text, re.MULTILINE)
+                if bug_matches:
+                    bugs = [bug.strip() for bug in bug_matches[:6]]
+        
+        # Extract suggestions (look for keywords)
+        if "suggest" in response.lower() or "recommend" in response.lower() or "improve" in response.lower():
+            suggestion_section = re.search(r'(?:suggestions?|recommendations?|improvements?)[\s:]+(.+?)(?=\n\n|\n[A-Z]|$)', response, re.IGNORECASE | re.DOTALL)
+            if suggestion_section:
+                suggestion_text = suggestion_section.group(1)
+                suggestion_matches = re.findall(r'[-•*]\s*(.+?)(?=\n[-•*]|\n\n|$)', suggestion_text, re.MULTILINE)
+                if suggestion_matches:
+                    suggestions = [sug.strip() for sug in suggestion_matches[:6]]
+        
+        # Extract complexity
+        complexity_match = re.search(r'complexity[\s:]+(\w+)', response, re.IGNORECASE)
+        if complexity_match:
+            complexity_value = complexity_match.group(1).capitalize()
+            if complexity_value in ["Low", "Medium", "High"]:
+                complexity = complexity_value
+        
+        # If we couldn't extract enough information, use fallback
+        if len(steps) < 5:
+            steps = [
+                f"Analyze {source_framework} project structure and dependencies",
+                f"Set up {target_framework} project skeleton with proper structure",
+                "Convert data models and schemas",
+                "Migrate API routes and endpoints",
+                "Update authentication and authorization logic",
+                "Convert middleware and request/response handling",
+                "Update configuration files and environment variables",
+                "Implement async patterns where applicable",
+                "Add comprehensive error handling",
+                "Test all migrated endpoints",
+                "Update documentation and deployment configs"
+            ]
+        
+        if len(bugs) < 3:
+            bugs = [
+                "Database connection and ORM query differences",
+                "Authentication middleware compatibility issues",
+                "Session management and state handling changes",
+                "Static file serving configuration differences",
+                "Third-party library compatibility"
+            ]
+        
+        if len(suggestions) < 3:
+            suggestions = [
+                "Implement async/await patterns for better performance",
+                "Use dependency injection for better testability",
+                "Add comprehensive API documentation with OpenAPI",
+                "Implement proper request validation with Pydantic",
+                "Use modern error handling and logging practices"
+            ]
+        
+        print(f"✅ Parsed migration plan from text response")
+        print(f"   Steps: {len(steps)}")
+        print(f"   Issues: {len(bugs)}")
+        print(f"   Suggestions: {len(suggestions)}")
+        
         return {
-            "steps": [
-                f"1. Analyze {source_framework} project structure",
-                f"2. Set up {target_framework} project skeleton",
-                "3. Convert models/entities",
-                "4. Migrate routes/controllers to modern endpoints",
-                "5. Update configuration and dependencies",
-                "6. Implement async patterns where applicable",
-                "7. Add error handling and validation",
-                "8. Test migrated endpoints",
-                "9. Update documentation"
-            ],
-            "bugs": [
-                "Database connection string format differences",
-                "Authentication middleware compatibility",
-                "Session management changes",
-                "Static file serving configuration"
-            ],
-            "suggestions": [
-                "Use async/await for better performance",
-                "Implement proper dependency injection",
-                "Add comprehensive API documentation",
-                "Use modern validation libraries",
-                "Implement proper error handling"
-            ],
-            "complexity": "Medium"
+            "steps": steps,
+            "bugs": bugs,
+            "suggestions": suggestions,
+            "complexity": complexity
         }
     
     async def migrate_code(
@@ -290,174 +415,248 @@ Format as JSON with keys: steps, bugs, suggestions, complexity
         source_code: str,
         source_framework: str,
         target_framework: str,
-        file_type: str
+        file_info: Dict[str, Any]
     ) -> str:
         """
         Convert source code from one framework to another
-        Uses Bob AI if available, falls back to template-based conversion
+        Enhanced with validation and pattern-based transformation
         """
-        prompt = f"""
-Convert this {source_framework} {file_type} to {target_framework}:
+        from app.core.validators import validate_fastapi_code
+        from app.core.transformer import get_enhanced_transformer
+        
+        print(f"\n{'='*60}")
+        print(f"🔄 Converting {file_info.get('filename', 'file')}")
+        print(f"   Category: {file_info.get('category', 'unknown')}")
+        print(f"   Framework: {source_framework} → {target_framework}")
+        print(f"{'='*60}\n")
+        
+        # Step 1: Try Bob AI conversion with enhanced prompt
+        print("📡 Step 1: Attempting Bob AI conversion...")
+        converted_code = await self._try_bob_ai_conversion(
+            source_code, source_framework, target_framework, file_info
+        )
+        
+        # Step 2: Validate the conversion
+        print("✅ Step 2: Validating conversion...")
+        validation = validate_fastapi_code(converted_code, file_info)
+        
+        if validation.is_valid:
+            print(f"✅ Bob AI conversion successful and validated!")
+            if validation.warnings:
+                print(f"⚠️  Warnings: {len(validation.warnings)}")
+                for warning in validation.warnings[:2]:
+                    print(f"   - {warning}")
+            return self._cleanup_code(converted_code)
+        
+        # Step 3: Bob AI failed validation, try with examples
+        print(f"❌ Bob AI conversion failed validation:")
+        for error in validation.errors[:3]:
+            print(f"   - {error}")
+        
+        print("\n📡 Step 3: Retrying Bob AI with examples...")
+        converted_code = await self._try_bob_ai_with_examples(
+            source_code, source_framework, target_framework, file_info
+        )
+        
+        validation = validate_fastapi_code(converted_code, file_info)
+        if validation.is_valid:
+            print(f"✅ Bob AI retry successful!")
+            return self._cleanup_code(converted_code)
+        
+        # Step 4: Fall back to enhanced pattern-based transformation
+        print(f"❌ Bob AI retry also failed")
+        print(f"\n🔧 Step 4: Using enhanced pattern-based transformation...")
+        
+        transformer = get_enhanced_transformer()
+        converted_code = transformer.transform(source_code, file_info)
+        
+        # Step 5: Final validation
+        print("✅ Step 5: Final validation...")
+        validation = validate_fastapi_code(converted_code, file_info)
+        
+        if validation.is_valid:
+            print(f"✅ Pattern-based conversion successful!")
+            return converted_code
+        else:
+            print(f"⚠️  Pattern-based conversion has issues:")
+            for error in validation.errors[:2]:
+                print(f"   - {error}")
+            print(f"   Returning best effort conversion\n")
+            return converted_code
+    
+    async def _try_bob_ai_conversion(
+        self,
+        source_code: str,
+        source_framework: str,
+        target_framework: str,
+        file_info: Dict[str, Any]
+    ) -> str:
+        """Try Bob AI conversion with enhanced prompt"""
+        
+        category = file_info.get('category', 'code')
+        filename = file_info.get('filename', 'file')
+        
+        prompt = f"""You are an expert at converting {source_framework} code to {target_framework}.
 
-```
+Convert this {source_framework} {category} file ({filename}) to {target_framework}:
+
+```python
 {source_code}
 ```
 
-Requirements:
-- Maintain functionality
-- Use modern {target_framework} patterns
-- Add type hints (if Python)
-- Use async/await where appropriate
-- Add proper error handling
-- Include comments for complex logic
+CRITICAL REQUIREMENTS:
+1. Remove ALL Django imports (django.*, rest_framework.*)
+2. Add FastAPI imports (from fastapi import ...)
+3. Convert Django patterns to FastAPI equivalents:
+   - APIView classes → @router.get/post/etc functions
+   - models.Model → Pydantic BaseModel
+   - Token auth → JWT dependencies
+   - Django ORM → SQLAlchemy queries
+4. Use async/await for route handlers
+5. Return ONLY the converted FastAPI code
+6. Do NOT preserve Django code
+7. Do NOT add explanatory text
 
-Return ONLY the converted code, no explanations.
+Return the complete, working FastAPI code now:
 """
         
         converted_code = await self._make_request(prompt)
         
         # Check if Bob AI returned an error
         if converted_code.startswith("Error:"):
-            print(f"⚠️  Bob AI unavailable, using template-based conversion")
-            converted_code = self._template_based_conversion(
-                source_code, source_framework, target_framework, file_type
-            )
-        else:
-            # Clean up response (remove markdown code blocks if present)
-            if "```" in converted_code:
-                lines = converted_code.split("\n")
-                code_lines = []
-                in_code_block = False
-                
-                for line in lines:
-                    if line.strip().startswith("```"):
-                        in_code_block = not in_code_block
-                        continue
-                    if in_code_block or not line.strip().startswith("```"):
-                        code_lines.append(line)
-                
-                converted_code = "\n".join(code_lines)
+            print(f"   ⚠️  Bob AI unavailable: {converted_code[:100]}")
+            return converted_code
         
-        return converted_code.strip()
+        return self._cleanup_code(converted_code)
     
-    def _template_based_conversion(
+    async def _try_bob_ai_with_examples(
         self,
         source_code: str,
         source_framework: str,
         target_framework: str,
-        file_type: str
+        file_info: Dict[str, Any]
     ) -> str:
-        """
-        Fallback template-based code conversion for hackathon MVP
-        Generates reasonable FastAPI code from Django patterns
-        """
-        if source_framework.lower() == "django" and target_framework.lower() == "fastapi":
-            if "models.py" in file_type.lower() or "class" in source_code:
-                return self._django_models_to_fastapi(source_code)
-            elif "views.py" in file_type.lower() or "def " in source_code:
-                return self._django_views_to_fastapi(source_code)
-            elif "urls.py" in file_type.lower():
-                return self._django_urls_to_fastapi(source_code)
+        """Retry Bob AI with conversion examples"""
         
-        # Generic fallback
-        return f"""# Converted from {source_framework} to {target_framework}
-# Original code preserved with modernization comments
+        example = self._get_conversion_example(file_info.get('category', 'view'))
+        
+        prompt = f"""Convert {source_framework} to {target_framework}.
 
+EXAMPLE CONVERSION:
+{example}
+
+Now convert this code following the same pattern:
+
+```python
 {source_code}
+```
 
-# TODO: Manual review required for complete migration
-# This is a template-based conversion. For production use:
-# 1. Review all imports
-# 2. Update database connections
-# 3. Implement proper error handling
-# 4. Add authentication/authorization
-# 5. Test all endpoints
+Return ONLY the converted FastAPI code:
 """
+        
+        converted_code = await self._make_request(prompt)
+        
+        if converted_code.startswith("Error:"):
+            return converted_code
+        
+        return self._cleanup_code(converted_code)
     
-    def _django_models_to_fastapi(self, source_code: str) -> str:
-        """Convert Django models to Pydantic models"""
-        return f"""from pydantic import BaseModel, Field
-from typing import Optional
-from datetime import datetime
+    def _get_conversion_example(self, category: str) -> str:
+        """Get example conversion for the given category"""
+        
+        if category == "view":
+            return """
+DJANGO CODE:
+```python
+from rest_framework.views import APIView
+from rest_framework.response import Response
 
-# Converted from Django ORM models to Pydantic schemas
-# Note: Database operations need SQLAlchemy or similar ORM
+class ItemView(APIView):
+    def get(self, request):
+        items = Item.objects.all()
+        return Response({'items': items})
+```
 
-{source_code}
-
-# TODO: Implement database layer with SQLAlchemy
-# TODO: Add CRUD operations
-# TODO: Configure database connection
-"""
-    
-    def _django_views_to_fastapi(self, source_code: str) -> str:
-        """Convert Django views to FastAPI routes"""
-        return f"""from fastapi import APIRouter, HTTPException, Depends
-from typing import List
-from pydantic import BaseModel
+FASTAPI CODE:
+```python
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
 router = APIRouter()
-
-# Converted from Django views to FastAPI routes
-# Original Django code:
-# {source_code[:200]}...
 
 @router.get("/items")
-async def list_items():
-    \"\"\"List all items\"\"\"
-    # TODO: Implement database query
-    return {{"message": "List endpoint - implement database query"}}
-
-@router.post("/items")
-async def create_item(item: BaseModel):
-    \"\"\"Create new item\"\"\"
-    # TODO: Implement database insert
-    return {{"message": "Create endpoint - implement database insert"}}
-
-@router.get("/items/{{item_id}}")
-async def get_item(item_id: int):
-    \"\"\"Get item by ID\"\"\"
-    # TODO: Implement database query
-    return {{"message": f"Get item {{item_id}} - implement database query"}}
-
-@router.put("/items/{{item_id}}")
-async def update_item(item_id: int, item: BaseModel):
-    \"\"\"Update item\"\"\"
-    # TODO: Implement database update
-    return {{"message": f"Update item {{item_id}} - implement database update"}}
-
-@router.delete("/items/{{item_id}}")
-async def delete_item(item_id: int):
-    \"\"\"Delete item\"\"\"
-    # TODO: Implement database delete
-    return {{"message": f"Delete item {{item_id}} - implement database delete"}}
-
-# Original Django code preserved below for reference:
-\"\"\"
-{source_code}
-\"\"\"
+async def get_items(db: Session = Depends(get_db)):
+    items = db.query(Item).all()
+    return {"items": items}
+```
 """
+        elif category == "model":
+            return """
+DJANGO CODE:
+```python
+from django.db import models
+
+class Item(models.Model):
+    name = models.CharField(max_length=100)
+    price = models.FloatField()
+```
+
+FASTAPI CODE:
+```python
+from pydantic import BaseModel
+
+class ItemBase(BaseModel):
+    name: str
+    price: float
+
+class ItemCreate(ItemBase):
+    pass
+
+class ItemResponse(ItemBase):
+    id: int
     
-    def _django_urls_to_fastapi(self, source_code: str) -> str:
-        """Convert Django URLs to FastAPI router"""
-        return f"""from fastapi import APIRouter
-
-router = APIRouter()
-
-# Converted from Django URL patterns to FastAPI routes
-# Original Django urls.py:
-# {source_code[:200]}...
-
-# TODO: Import and include route handlers
-# Example:
-# from .views import router as views_router
-# router.include_router(views_router, prefix="/api", tags=["items"])
-
-# Original Django URL configuration preserved below:
-\"\"\"
-{source_code}
-\"\"\"
+    class Config:
+        from_attributes = True
+```
 """
+        else:
+            return "Convert Django code to FastAPI equivalents."
+    
+    def _cleanup_code(self, code: str) -> str:
+        """Clean up converted code"""
+        # Remove markdown code blocks
+        if "```" in code:
+            lines = code.split("\n")
+            code_lines = []
+            in_code_block = False
+            
+            for line in lines:
+                if line.strip().startswith("```"):
+                    in_code_block = not in_code_block
+                    continue
+                if in_code_block or not line.strip().startswith("```"):
+                    code_lines.append(line)
+            
+            code = "\n".join(code_lines)
+        
+        # Remove leading/trailing whitespace
+        code = code.strip()
+        
+        # Remove any explanatory text before imports
+        lines = code.split('\n')
+        first_import_idx = -1
+        for i, line in enumerate(lines):
+            if line.startswith('from ') or line.startswith('import '):
+                first_import_idx = i
+                break
+        
+        if first_import_idx > 0:
+            # Remove lines before first import if they're comments
+            if all(l.startswith('#') or not l.strip() for l in lines[:first_import_idx]):
+                code = '\n'.join(lines[first_import_idx:])
+        
+        return code
+    
     
     async def generate_flowchart(
         self,

@@ -11,12 +11,12 @@ import os
 load_dotenv()
 
 # Import routers
-from app.api import upload, github, scan, plan, migrate, rollback, status
+from app.api import upload, github, scan, plan, migrate, status, download
 
 # Create FastAPI app
 app = FastAPI(
     title="Legacy Code Surgeon AI",
-    description="AI-powered legacy code modernization and migration platform",
+    description="AI-powered Django to FastAPI migration platform",
     version="1.0.0"
 )
 
@@ -35,8 +35,8 @@ app.include_router(github.router, prefix="/api", tags=["GitHub"])
 app.include_router(scan.router, prefix="/api", tags=["Scan"])
 app.include_router(plan.router, prefix="/api", tags=["Plan"])
 app.include_router(migrate.router, prefix="/api", tags=["Migrate"])
-app.include_router(rollback.router, prefix="/api", tags=["Rollback"])
 app.include_router(status.router, prefix="/api", tags=["Status"])
+app.include_router(download.router, prefix="/api", tags=["Download"])
 
 
 @app.get("/")

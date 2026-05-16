@@ -38,11 +38,19 @@ async def migrate_project(
                 detail="Unable to detect source framework"
             )
         
-        # Perform migration
+        # Validate Django only
+        if source_framework.lower() != "django":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Only Django to FastAPI migration is supported. Detected: {source_framework}"
+            )
+        
+        # Perform migration (always to FastAPI)
+        target_framework = "fastapi"
         migrator = CodeMigrator(project_id)
         migration_result = await migrator.migrate(
             source_framework=source_framework,
-            target_framework=request.target_framework,
+            target_framework=target_framework,
             source_path=project_path
         )
         
@@ -50,7 +58,7 @@ async def migrate_project(
             project_id=project_id,
             converted_files=migration_result["converted_files"],
             output_path=migration_result["output_path"],
-            target_framework=request.target_framework,
+            target_framework=target_framework,
             status="completed"
         )
     
