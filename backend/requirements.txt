@@ -91,9 +91,6 @@ orjson==3.10.11
 # Progress bars
 tqdm==4.67.1
 
-# File type detection
-python-magic==0.4.27
-python-magic-bin==0.4.14  # Windows support
 
 # ============================================
 # Monitoring & Logging (Optional)
