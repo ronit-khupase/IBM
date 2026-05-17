@@ -7,7 +7,7 @@
 # Core Web Framework
 # ============================================
 fastapi==0.115.0
-uvicorn[standard]==0.32.0
+uvicorn==0.32.0
 
 # ============================================
 # Data Validation & Settings
@@ -91,9 +91,6 @@ orjson==3.10.11
 # Progress bars
 tqdm==4.67.1
 
-# File type detection
-python-magic==0.4.27
-python-magic-bin==0.4.14  # Windows support
 
 # ============================================
 # Monitoring & Logging (Optional)
@@ -125,8 +122,6 @@ structlog==24.4.0
 # ============================================
 # Development Dependencies
 # ============================================
-# Auto-reload for development
-watchfiles==0.24.0
 
 # Debugging
 ipython==8.29.0
