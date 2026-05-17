@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+frontend/dist/
+frontend/build/
+
+# Storage (uploaded files - don't include in image)
+backend/app/storage/uploads/*
+backend/app/storage/repos/*
+backend/app/storage/migrated/*
+backend/app/storage/snapshots/*
+
+# Keep .gitkeep files
+!backend/app/storage/uploads/.gitkeep
+!backend/app/storage/repos/.gitkeep
+!backend/app/storage/migrated/.gitkeep
+!backend/app/storage/snapshots/.gitkeep
+
+# Documentation
+*.md
+!README.md
+
+# Bob sessions
+bob_sessions/
+
+# Tests
+*.test.js
+*.spec.js
+__tests__/
+tests/
+coverage/
+
+# Logs
+*.log
+logs/

@@ -1,0 +1,87 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+.env
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+frontend/dist/
+frontend/build/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Storage (uploaded files)
+backend/app/storage/uploads/*
+backend/app/storage/repos/*
+backend/app/storage/migrated/*
+backend/app/storage/snapshots/*
+
+# Keep directory structure
+!backend/app/storage/uploads/.gitkeep
+!backend/app/storage/repos/.gitkeep
+!backend/app/storage/migrated/.gitkeep
+!backend/app/storage/snapshots/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Bob sessions
+bob_sessions/
+
+# Docker
+*.tar
+*.tar.gz
+
+# Backups
+backup-*.tar.gz
+*.backup
+
+# Coverage
+coverage/
+.coverage
+htmlcov/
+
+# Testing
+.pytest_cache/
+.tox/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Made with Bob
