@@ -40,9 +40,10 @@ services:
       mountPath: /app/backend/app/storage
       sizeGB: 1
 
-  # Frontend Service
-  - type: static
+   # Frontend Service
+  - type: web
     name: legacy-surgeon-frontend
+    env: static
     branch: main
 
     buildCommand: cd frontend && npm install && npm run build
